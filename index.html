@@ -1,0 +1,182 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>몽글 발야구 선택 게임</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f0e7;color:#35483d;font-family:'Malgun Gothic',system-ui,sans-serif}header{text-align:center;background:#c8e7d0;padding:18px;border-bottom:5px solid #78ad88}h1{margin:0;font-size:27px}.layout{max-width:1100px;margin:18px auto;padding:0 12px;display:grid;grid-template-columns:minmax(0,720px) 1fr;gap:16px}.card{background:#fff;border:3px solid #b9d3b7;border-radius:20px;padding:15px;box-shadow:0 7px 0 #e1e5d7}.score{display:flex;justify-content:space-between;background:#5c9070;color:white;border-radius:13px;padding:12px;font-weight:bold;margin-bottom:12px}.score strong{font-size:24px;color:#fff4a5}canvas{width:100%;height:auto;border-radius:15px;background:#a5d6a1;display:block}.msg{background:#fff4d9;border:2px solid #e8c993;border-radius:13px;padding:14px;line-height:1.6;min-height:76px;margin-top:12px;font-weight:600}.buttons{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:12px}button{border:0;border-bottom:5px solid #d5aa70;border-radius:14px;padding:14px 7px;background:#ffe0a4;font:700 16px 'Malgun Gothic',system-ui;cursor:pointer;color:#594634}button:nth-child(even){background:#d7eafa;border-bottom-color:#9ebed5}button:disabled{opacity:.4;cursor:default}.tag{display:inline-block;background:#edf3d9;border-radius:12px;padding:7px 10px;margin:7px 4px 0 0}.side{line-height:1.75}.side h3{margin:10px 0}.note{font-size:13px;color:#68776c}.pill{background:#e4f1e6;padding:10px;border-radius:12px;margin-top:8px}@media(max-width:800px){.layout{grid-template-columns:1fr}.score{font-size:12px}.score strong{font-size:20px}button{font-size:14px}} .fieldWrap{position:relative}.switchOverlay{position:absolute;inset:0;background:rgba(27,54,48,.79);border-radius:15px;display:none;align-items:center;justify-content:center;padding:18px;z-index:5;text-align:center}.switchOverlay.show{display:flex}.switchPanel{background:#fffdf2;border:5px solid #ffe6a3;border-radius:24px;padding:24px 18px;width:min(94%,470px);box-shadow:0 12px 0 #213f35}.switchIcon{font-size:54px;animation:pop .65s ease-in-out infinite alternate}.switchTitle{font-size:clamp(25px,5vw,43px);font-weight:900;color:#bc5442;margin:6px 0}.switchDesc{font-size:19px;font-weight:800;color:#375c4d;margin:8px 0 18px;line-height:1.55}.switchPanel button{background:#bfe9d2;border-bottom-color:#77b08d;width:100%;font-size:20px}@keyframes pop{from{transform:scale(.92)}to{transform:scale(1.07)}} </style></head><body><header><h1>🌷 몽글 발야구 리그 ⚽</h1><div>내 행동을 선택하면 경기가 움직여요!</div></header><div class="layout"><main class="card"><div class="score"><span>🌻 우리 팀 <strong id="home">0</strong></span><span id="inning">1회 초 · 공격</span><span>🍄 상대 팀 <strong id="away">0</strong></span></div><div class="fieldWrap"><canvas id="cv" width="700" height="520"></canvas><div id="switchOverlay" class="switchOverlay" role="dialog" aria-modal="true" aria-labelledby="switchTitle"><div class="switchPanel"><div class="switchIcon">🔄</div><div id="switchTitle" class="switchTitle">공수 교대!</div><div id="switchDesc" class="switchDesc"></div><button id="switchContinue" type="button">▶ 계속하기</button></div></div></div><div><span class="tag" id="outs">아웃 0/3</span><span class="tag" id="fouls">파울 0/3</span><span class="tag" id="runnerTag">주자 없음</span><span class="tag" id="batter">타순 1번</span></div><div id="msg" class="msg" aria-live="polite">경기 시작을 누르면 1번 타자가 자동으로 공격해요. 나는 2번 타자예요!</div><div id="buttons" class="buttons"></div></main><aside class="card side"><h3>📖 상황 설명</h3><div id="lesson" class="pill">공격과 수비를 번갈아 하며 규칙을 익혀요.</div><h3>⚾ 기본 규칙</h3><p>• 파울 3번 = 1아웃<br>• 3아웃 = 공수 교대<br>• 홈에 도착하면 1점<br>• 앞 주자가 있으면 강제 진루<br>• 뜬공을 잡히면 타자 아웃<br>• 다른 선수는 자동으로 행동</p><button style="width:100%" onclick="reset()">🔄 새 경기</button></aside></div><script>
+'use strict';const cv=document.getElementById('cv'),g=cv.getContext('2d'),$=id=>document.getElementById(id);const P={0:[350,420],1:[500,315],2:[350,205],3:[200,315],4:[350,420]};let S,phase,ball,actors=[],animations=[],clock=0,token=0,hitType='',hitPoint=null,battingRunner=null,defenseRunner=null,scoreBanner=null,scoreBannerUntil=0;const DEFENSE_POS=[[270,258],[350,152],[430,258],[405,332],[295,332]];const rainbow=['#f16b70','#f6a35d','#f2cf56','#69c891','#6caee9','#687ad2','#b88bd8'];const random=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.floor(Math.random()*a.length)];function isFoul(x,y){
+ const dx=x-350,dy=420-y;
+ return dy<0||Math.abs(dx)>dy*(150/105);
+}function foulPoint(){return pick([[75,330],[625,330],[85,265],[615,265]])}function say(t){$('msg').textContent=t}function teach(t){$('lesson').textContent=t}function buttons(items){$('buttons').innerHTML='';items.forEach(([label,fn])=>{let b=document.createElement('button');b.textContent=label;b.onclick=fn;$('buttons').appendChild(b)})}function hud(){$('home').textContent=S.us;$('away').textContent=S.cpu;$('inning').textContent=phase==='end'?'경기 종료':`${S.inning}회 ${S.half?'말 · 수비':'초 · 공격'}`;$('outs').textContent=`아웃 ${S.outs}/3`;$('fouls').textContent=`파울 ${S.fouls}/3`;$('runnerTag').textContent=S.runners.length?'주자 '+S.runners.map(r=>r.base+'루').join('·'):'주자 없음';$('batter').textContent=`타순 ${S.order}번`}function makeRunner(base,mine=false,team='us',number=S.order){return {base,mine,team,number,x:P[base][0]+(base?18:0),y:P[base][1]-12}}function reset(){$('switchOverlay').classList.remove('show');scoreBanner=null;scoreBannerUntil=0;token++;animations=[];S={inning:1,half:0,us:0,cpu:0,outs:0,fouls:0,order:1,runners:[]};phase='ready';ball={x:350,y:420};actors=[];say('1번 타자가 먼저 공격해요. 나는 2번 타자로 고정이에요!');teach('공을 차면 결과를 보여주고, 진루할 수 있는 상황에서 선택할 수 있어요.');buttons([['▶ 경기 시작',start]]);hud()}function start(){computerBatter()}function wait(ms,fn){let id=token;setTimeout(()=>{if(id===token)fn()},ms)}function move(object,to,duration){return new Promise(resolve=>{let id=token;animations.push({object,from:{x:object.x,y:object.y},to,duration,start:performance.now(),resolve,id})})}function addScore(team){S[team]++;scoreBanner='score';scoreBannerUntil=performance.now()+2100;hud()}function delay(ms){return new Promise(resolve=>wait(ms,resolve))}async function travelAll(paths,ms){await Promise.all(paths.map(({r,base})=>move(r,{x:P[base][0]+(r.mine?20:-18),y:P[base][1]-12},ms)))}function nearestFielder(){
+ const positions=DEFENSE_POS;
+ let closest=positions.map((p,i)=>({p,i,d:Math.hypot(p[0]-ball.x,p[1]-ball.y)})).sort((a,b)=>a.d-b.d)[0];
+ return {x:closest.p[0],y:closest.p[1],slot:closest.i};
+}
+function player(x,y,color='#eead8c',scale=1){g.save();g.translate(x,y);g.scale(scale,scale);g.fillStyle='#0002';g.beginPath();g.ellipse(0,29,20,5,0,0,7);g.fill();g.lineCap='round';g.strokeStyle='#6a605c';g.lineWidth=7;g.beginPath();g.moveTo(-8,12);g.lineTo(-9,25);g.moveTo(8,12);g.lineTo(9,25);g.stroke();g.fillStyle=color;g.beginPath();g.roundRect(-17,-4,34,23,12);g.fill();g.strokeStyle='#f4cfb1';g.lineWidth=7;g.beginPath();g.moveTo(-15,0);g.lineTo(-20,9);g.moveTo(15,0);g.lineTo(20,9);g.stroke();g.fillStyle='#f7d6b8';g.beginPath();g.arc(0,-19,20,0,7);g.fill();g.fillStyle='#785b51';g.beginPath();g.arc(0,-23,20,Math.PI,Math.PI*2);g.fill();g.fillStyle='#483d38';g.beginPath();g.arc(-7,-17,2.5,0,7);g.arc(7,-17,2.5,0,7);g.fill();g.strokeStyle='#ae766c';g.lineWidth=2;g.beginPath();g.arc(0,-13,5,0,Math.PI);g.stroke();g.restore()}function field(){g.fillStyle='#a7d99e';g.fillRect(0,0,700,520);for(let x=0;x<700;x+=50){g.fillStyle='#a0d393';g.beginPath();g.arc(x+20,45,9,0,7);g.fill()}g.fillStyle='#dfbf8e';g.beginPath();g.moveTo(...P[0]);g.lineTo(...P[1]);g.lineTo(...P[2]);g.lineTo(...P[3]);g.closePath();g.fill();g.fillStyle='#b8dfab';g.beginPath();g.moveTo(350,391);g.lineTo(461,315);g.lineTo(350,235);g.lineTo(239,315);g.closePath();g.fill();g.strokeStyle='#fff9e7';g.lineWidth=4;g.beginPath();[0,1,2,3,0].forEach((n,i)=>i?g.lineTo(...P[n]):g.moveTo(...P[n]));g.stroke();g.strokeStyle='#fff9e7';g.lineWidth=3;g.setLineDash([8,7]);g.beginPath();g.moveTo(...P[0]);g.lineTo(80,230);g.moveTo(...P[0]);g.lineTo(620,230);g.stroke();g.setLineDash([]);for(let n=1;n<=4;n++){let [x,y]=P[n];g.fillStyle='white';g.beginPath();g.roundRect(x-10,y-8,20,16,3);g.fill();g.fillStyle='#527359';g.font='bold 16px sans-serif';g.textAlign='center';g.fillText(n===4?'홈':n+'루',x,y-19)}for(let [i,pos] of DEFENSE_POS.entries()){let actor=actors.find(a=>a.slot===i);if(actor)player(actor.x,actor.y,S.half?rainbow[1]:'#649fe3',.85);else player(pos[0],pos[1],S.half?rainbow[1]:'#649fe3',.85)}S.runners.forEach(r=>player(r.x,r.y,r.team==='cpu'?'#649fe3':rainbow[(r.number-1)%7],.85));if(battingRunner&& !S.runners.includes(battingRunner))player(battingRunner.x,battingRunner.y,battingRunner.team==='cpu'?'#649fe3':rainbow[((battingRunner.number||S.order)-1)%7],.85);if(defenseRunner)player(defenseRunner.x,defenseRunner.y,'#649fe3',.85);if(scoreBanner&&clock<scoreBannerUntil){g.fillStyle='#365b4de8';g.beginPath();g.roundRect(120,175,460,125,25);g.fill();g.textAlign='center';g.font='bold 43px sans-serif';g.fillStyle='#ffe27c';g.fillText('🎉 1점 획득!',350,254)}if(ball){g.fillStyle='#fff';g.beginPath();g.arc(ball.x,ball.y,9,0,7);g.fill();g.strokeStyle='#e89c85';g.lineWidth=2;g.stroke()}g.fillStyle='#46765b';g.beginPath();g.roundRect(15,467,210,35,13);g.fill();g.fillStyle='white';g.font='bold 16px sans-serif';g.textAlign='center';g.fillText('🌻 해바라기 팀',120,490)}function render(now){clock=now;for(let i=animations.length-1;i>=0;i--){let a=animations[i];let t=Math.min(1,(now-a.start)/a.duration),e=t*t*(3-2*t);a.object.x=a.from.x+(a.to.x-a.from.x)*e;a.object.y=a.from.y+(a.to.y-a.from.y)*e;if(t>=1){animations.splice(i,1);a.resolve()}}field();requestAnimationFrame(render)}async function kickAnimation(team,distance,landing=null){
+ phase='kickAnim';buttons([]);ball={x:350,y:420};
+ battingRunner={x:350,y:449,number:S.order,team:S.half===0?'us':'cpu'};
+ say(team==='us'?'🌻 내가 공을 찼어요!':`⚽ ${S.order}번 선수가 공을 찼어요!`);
+ await delay(420);
+ const point=landing|| (distance==='far'?pick([[180,160],[350,105],[520,170]]):pick([[270,270],[430,270],[350,245]]));
+ hitPoint=point;
+ await move(ball,{x:point[0],y:point[1]},900);
+ battingRunner=null;return point;
+}async function computerBatter(){
+ if(S.half)return computerDefense();
+ phase='cpu';hud();say(`🌻 ${S.order}번 선수가 공격을 준비해요.`);
+ await delay(450);
+ const type=pick(['near','far']),outcome=Math.random();
+ const foul=outcome<.15, landing=foul?foulPoint():null;
+ await kickAnimation('cpu',type,landing);
+ if(foul){
+ S.fouls++;say(`🚩 ${S.order}번 선수 파울! (${S.fouls}/3)`);
+ if(S.fouls>=3){S.fouls=0;S.outs++;S.order++;say('🚩 파울 3번으로 아웃!')}
+ await delay(650);afterPlay();return;
+ }
+ S.fouls=0;
+ const r=makeRunner(0,false,'us',S.order);battingRunner=r;
+ if(outcome<.46){
+   const f=nearestFielder();actors=[f];phase='fieldChase';
+   say('🏃 타자는 1루로 달리고, 수비수는 뜬공을 잡으러 달려갑니다!');
+   const forced=[];let base=1;const occ=new Map(S.runners.map(v=>[v.base,v]));
+   while(occ.has(base)){forced.push({r:occ.get(base),to:base+1});base++}
+   await Promise.all([travelAll([{r,base:1},...forced.map(p=>({r:p.r,base:p.to}))],1000),move(f,{x:ball.x,y:ball.y},950)]);
+   for(const p of forced){if(p.to===4){S.runners=S.runners.filter(v=>v!==p.r);if(S.outs+1<3)addScore('us')}else p.r.base=p.to}
+   S.outs++;S.order++;ball={x:f.x,y:f.y};actors=[];battingRunner=null;
+   say('🧤 수비수가 뜬공을 잡았어요! 달리던 타자는 아웃, 앞 주자는 다음 루에 남아요.');
+   await delay(650);afterPlay();return;
+ }
+ say(`⚽ ${S.order}번 선수가 공을 차고 1루로 달려요!`);
+ await advanceOnHit(r,true);afterPlay();
+}function myBatter(){phase='chooseKick';hud();ball={x:350,y:420};say('🌻 2번 타자인 내 차례! 공을 어떻게 찰까요?');teach('멀리 차면 뜬공으로 잡힐 수도 있어요. 가까이 차면 땅볼로 잡힐 수도 있어요.');buttons([['⚽ 멀리 찬다',()=>myKick('far')],['⚽ 가까이 찬다',()=>myKick('near')]])}async function myKick(type){
+ if(phase!=='chooseKick'&&phase!=='foul')return;
+ const r=Math.random(),foul=r<(type==='far'?.16:.12),point=foul?foulPoint():null;
+ await kickAnimation('us',type,point);
+ if(foul){
+ S.fouls++;say(`🚩 공이 1·3루 선 바깥으로 나갔어요! 파울 ${S.fouls}/3`);
+ if(S.fouls>=3){S.outs++;S.fouls=0;S.order++;say('🚩 파울 3번! 타자 아웃!');await delay(600);afterPlay()}
+ else{phase='foul';buttons([['⚽ 다시 멀리 찬다',()=>myKick('far')],['⚽ 다시 가까이 찬다',()=>myKick('near')]])}
+ hud();return;
+ }
+ S.fouls=0;
+ const runner=makeRunner(0,true,'us',2);battingRunner=runner;
+ if(r<(type==='far'?.60:.49)){
+   let f=nearestFielder();actors=[f];phase='fieldChase';
+   const occupied=new Map(S.runners.map(v=>[v.base,v]));const forced=[];let base=1;
+   while(occupied.has(base)){forced.push({r:occupied.get(base),to:base+1});base++}
+   say('🏃 타자가 1루로 달리는 동안 수비수도 공을 향해 달려갑니다!');
+   await Promise.all([travelAll([{r:runner,base:1},...forced.map(p=>({r:p.r,base:p.to}))],1050),move(f,{x:ball.x,y:ball.y},850)]);
+   ball={x:f.x,y:f.y};
+   if(type!=='far')await move(ball,{x:P[1][0],y:P[1][1]},420);
+   S.outs++;
+   for(const p of forced){if(p.to===4){S.runners=S.runners.filter(v=>v!==p.r);if(S.outs<3)addScore('us')}else p.r.base=p.to}
+   S.order++;actors=[];battingRunner=null;
+   say(S.outs>=3?'🧤 3아웃! 이번 플레이에서 홈에 들어온 점수는 인정되지 않아요.':type==='far'?'🧤 뜬공을 잡았어요! 달리던 타자 아웃, 앞 주자는 진루해요.':'🥎 공이 1루에 먼저 도착! 타자는 아웃, 앞 주자는 진루해요.');
+   await delay(650);afterPlay();return;
+ }
+ await advanceOnHit(runner,false);
+}async function stayAfterKick(){S.outs++;S.order++;battingRunner=null;say('🛑 타자가 1루로 달리지 않아 아웃!');await delay(650);afterPlay()}async function advanceOnHit(r,auto){
+ phase='moving';buttons([]);battingRunner=r;
+ const occupied=new Map(S.runners.map(v=>[v.base,v]));
+ const forced=[];let base=1;
+ while(occupied.has(base)){forced.push({r:occupied.get(base),from:base,to:base+1});base++}
+ say('🏃 타자는 1루로, 앞 주자는 다음 루로 동시에 달려요!');
+ const f=nearestFielder();actors=[f];
+ // 타자·밀려나는 주자·수비수가 동시에 움직이고, 공은 이후 1루로 송구됩니다.
+ const running=travelAll([{r,base:1},...forced.map(p=>({r:p.r,base:p.to}))],1250);
+ const fielding=(async()=>{await move(f,{x:ball.x,y:ball.y},650);await move(ball,{x:P[1][0],y:P[1][1]},600)})();
+ await Promise.all([running,fielding]);actors=[];
+ const safe=Math.random()<(auto?.64:.58);
+ const nextOuts=S.outs+(safe?0:1);
+ if(safe){
+   for(const p of forced){
+     if(p.to===4){
+       S.runners=S.runners.filter(v=>v!==p.r);
+       if(nextOuts<3)addScore('us');
+     }else p.r.base=p.to;
+   }
+   r.base=1;S.runners.push(r);
+   say('🎉 세이프! 앞 주자도 함께 다음 루로 이동했어요.');
+ }else{
+   S.outs=nextOuts;
+   for(const p of forced){
+     if(p.to===4){S.runners=S.runners.filter(v=>v!==p.r);if(S.outs<3)addScore('us')}
+     else p.r.base=p.to;
+   }
+   say(S.outs>=3?'🧤 3아웃! 이 플레이의 득점은 인정되지 않아요.':'🧤 공이 1루에 먼저 도착! 타자는 아웃, 앞 주자는 다음 루에 남아요.');
+ }
+ battingRunner=null;S.order++;hud();await delay(650);
+ if(!auto)afterPlay();
+}function afterPlay(){phase='result';hud();buttons([[S.outs>=3?'🔁 공수 교대':'➡ 다음 타자',next]])}function showSwitch(nextHalf,done){
+ phase='switch';buttons([]);
+ const toDefense=nextHalf===1;
+ $('switchTitle').textContent='🔄 공수 교대!';
+ $('switchDesc').innerHTML=toDefense?'🧤 <b>우리 팀: 공격 → 수비</b><br>⚽ 상대 팀: 수비 → 공격<br>상대 공격팀은 파란색 유니폼!':'⚽ <b>우리 팀: 수비 → 공격</b><br>🧤 상대 팀: 공격 → 수비<br>우리 팀 1번 선수부터 다시 시작!';
+ $('switchContinue').textContent=toDefense?'🧤 수비 시작하기':'⚽ 공격 시작하기';
+ $('switchOverlay').classList.add('show');
+ $('switchContinue').onclick=()=>{$('switchOverlay').classList.remove('show');done()};
+ say('🔄 3아웃! 공수 교대! 화면 중앙의 버튼을 눌러 다음 차례를 시작하세요.');
+}
+function next(){
+ if(S.outs>=3){
+  scoreBanner=null;S.outs=0;S.fouls=0;S.runners=[];battingRunner=null;defenseRunner=null;actors=[];ball={x:350,y:420};
+  if(S.half===0){S.half=1;S.order=1;hud();showSwitch(1,()=>{phase='defReady';say('🧤 우리 팀 수비 차례입니다!');computerDefense()});return}
+  if(S.inning>=2){return end()}
+  S.inning++;S.half=0;S.order=1;hud();showSwitch(0,()=>{say('⚽ 우리 팀 공격 차례입니다!');computerBatter()});return;
+ }
+ if(S.half===1)return computerDefense();
+ if(S.order===2)return myBatter();
+ computerBatter();
+}
+async function computerDefense(){
+ phase='cpuDefense';hud();say(`🍄 상대 팀 ${S.order}번 선수가 공을 차요!`);
+ await delay(450);
+ const outcome=Math.random(),foul=outcome<.13;
+ await kickAnimation('cpu',pick(['near','far']),foul?foulPoint():null);
+ if(foul){
+ S.fouls++;say(`🚩 상대 팀 ${S.order}번 선수 파울 ${S.fouls}/3`);
+ if(S.fouls>=3){S.outs++;S.fouls=0;S.order++;say('🚩 파울 3번으로 아웃!')}
+ await delay(600);defenseAfter();return;
+ }
+ S.fouls=0;
+ const f=nearestFielder();actors=[f];
+ defenseRunner=makeRunner(0,false,'cpu',S.order);
+ phase='fieldChoice';say('⚾ 상대 팀 타자가 1루로 뛰기 시작했어요! 수비 방법을 선택하세요.');
+ teach('뜬공을 잡으려면 수비수가 공의 위치까지 달려가야 해요.');
+ buttons([['🧤 달려가서 뜬공 잡기',()=>fieldAction(f,'catch')],['🏃 공이 떨어진 곳으로 이동',()=>fieldAction(f,'ground')]]);
+}async function fieldAction(f,action){
+ phase='chase';buttons([]);
+ say(action==='catch'?'🏃 수비수가 공을 향해 뛰어가 뜬공을 잡으려 해요!':'🏃 수비수가 공이 떨어진 곳으로 달려가요!');
+ await move(f,{x:ball.x,y:ball.y},900);
+ if(action==='catch'&&Math.random()<.55){S.outs++;S.order++;actors=[];defenseRunner=null;say('🧤 뜬공을 잡았어요! 타자 아웃!');await delay(650);return defenseAfter()}
+ if(action==='catch')say('앗, 공이 땅에 떨어졌어요! 송구로 아웃을 노려요.');
+ phase='throw';
+ teach('타자가 1루를 향해 달리고 있어요. 1루에 공을 먼저 보내면 아웃이에요.');
+ buttons([1,2,3,4].map(n=>[`🥎 ${n===4?'홈':n+'루'} 송구`,()=>throwTo(n,f)]));
+}
+async function throwTo(n,f){
+ phase='throwing';buttons([]);ball={x:f.x,y:f.y};
+ const occupied=new Map(S.runners.map(v=>[v.base,v]));
+ const forced=[];let b=1;
+ while(occupied.has(b)){forced.push({r:occupied.get(b),from:b,to:b+1});b++}
+ say('🥎 공이 선택한 루로 날아가고, 타자와 앞 주자들이 동시에 달립니다!');
+ const run=Promise.all([
+   move(defenseRunner,{x:P[1][0]-18,y:P[1][1]-12},1050),
+   travelAll(forced.map(p=>({r:p.r,base:p.to})),1050)
+ ]);
+ const pass=move(ball,{x:P[n][0],y:P[n][1]},n===1?750:850);
+ await Promise.all([run,pass]);actors=[];
+ const out=n===1&&Math.random()<.62;
+ if(out){
+   S.outs++;
+   for(const p of forced){
+     if(p.to===4){S.runners=S.runners.filter(v=>v!==p.r);if(S.outs<3)addScore('cpu')}
+     else p.r.base=p.to;
+   }
+   say(S.outs>=3?'🎯 3아웃! 동시에 홈에 들어온 점수는 인정되지 않아요.':'🎯 공이 1루에 먼저 도착! 타자 아웃! 앞 주자는 다음 루에 남아요.');
+ }else{
+   for(const p of forced){
+     if(p.to===4){S.runners=S.runners.filter(v=>v!==p.r);if(S.outs<3)addScore('cpu')}
+     else p.r.base=p.to;
+   }
+   S.runners.push(makeRunner(1,false,'cpu',S.order));
+   say(n===1?'💨 상대 팀 타자가 먼저 1루에 도착! 세이프!':'⚠️ 다른 루에 송구해 상대 팀 타자가 1루 세이프!');
+ }
+ S.order++;defenseRunner=null;hud();await delay(600);defenseAfter();
+}function defenseAfter(){phase='defResult';hud();buttons([['➡ 다음 상황',()=>{if(S.outs>=3)next();else computerDefense()}]])}function end(){phase='end';hud();say(`🏆 경기 종료! ${S.us>S.cpu?'우리 팀 승리!':S.us<S.cpu?'상대 팀 승리!':'무승부!'} ${S.us} : ${S.cpu}`);buttons([['🔄 다시 경기하기',reset]])}reset();requestAnimationFrame(render);
+</script></body></html>
